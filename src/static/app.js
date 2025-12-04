@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      // reset select options to avoid duplicates on refresh
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -20,9 +22,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
-        const participantsList = details.participants.length > 0
-          ? `<ul class="participants-list">${details.participants.map(p => `<li>${p}</li>`).join("")}</ul>`
-          : `<p class="no-participants"><em>No participants yet</em></p>`;
+        let participantsHtml = '';
+        if (details.participants.length > 0) {
+          participantsHtml = `<ul class="participants-list">${details.participants.map(p => `\n              <li class="participant-item">\n                <span class="participant-email">${p}</span>\n                <button class="delete-btn" data-activity="${name}" data-email="${p}" title="Unregister">✖</button>\n              </li>`).join('')}\n            </ul>`;
+        } else {
+          participantsHtml = `<p class="no-participants"><em>No participants yet</em></p>`;
+        }
 
         activityCard.innerHTML = `
           <h4>${name}</h4>
@@ -31,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants-section">
             <strong>Signed Up:</strong>
-            ${participantsList}
+            ${participantsHtml}
           </div>
         `;
 
@@ -42,6 +47,30 @@ document.addEventListener("DOMContentLoaded", () => {
         option.value = name;
         option.textContent = name;
         activitySelect.appendChild(option);
+
+        // Attach delete handlers for buttons in this activity card
+        const deleteButtons = activityCard.querySelectorAll('.delete-btn');
+        deleteButtons.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const activityName = btn.dataset.activity;
+            const email = btn.dataset.email;
+            if (!confirm(`Unregister ${email} from ${activityName}?`)) return;
+
+            try {
+              const res = await fetch(`/activities/${encodeURIComponent(activityName)}/participants?email=${encodeURIComponent(email)}`, { method: 'DELETE' });
+              const result = await res.json();
+              if (res.ok) {
+                // Refresh the activities to reflect changes
+                fetchActivities();
+              } else {
+                alert(result.detail || 'Failed to unregister participant');
+              }
+            } catch (err) {
+              console.error('Error unregistering participant:', err);
+              alert('Network error while unregistering participant');
+            }
+          });
+        });
       });
     } catch (error) {
       activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
@@ -70,6 +99,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities to show the new participant
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
